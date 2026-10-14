@@ -145,3 +145,65 @@ def patch_workflow(
         return WorkflowDTO.model_validate(data)
     except Exception:  # noqa: BLE001
         return workflow
+
+
+def adapt_workflow(
+    workflow: WorkflowDTO,
+    profile_summary: dict[str, Any],
+    context: str | None = None,
+) -> WorkflowDTO:
+    """Remap bindings (sheets/columns) for a perturbed workbook; keep intent/steps/validators."""
+    if not get_api_key():
+        return workflow
+
+    system = (
+        "You adapt an existing DIU workflow to a renamed/reordered workbook. "
+        "Return a full JSON workflow object. "
+        "Update bindings only: sheet_hints, header_hints, column_aliases, resolved_sheet. "
+        "Extend synonym lists rather than replacing them when possible. "
+        "Never invent Excel cell addresses. "
+        "Keep intent, steps, and validators unchanged. "
+        "Do not wipe clarifications; preserve prior answers. "
+        "Policies may stay as-is unless clearly wrong."
+    )
+    user = {
+        "task": "Adapt workflow bindings to the profiled workbook.",
+        "current_workflow": workflow.model_dump(mode="json"),
+        "profile": profile_summary,
+        "context": context or "",
+    }
+    try:
+        data = chat_json(system, json.dumps(user))
+        # Freeze structural fields; only take bindings (+ optional policies/aliases).
+        merged = workflow.model_dump(mode="json")
+        if data.get("bindings"):
+            merged["bindings"] = data["bindings"]
+        if data.get("policies"):
+            merged["policies"] = data["policies"]
+        if data.get("aliases"):
+            # Merge aliases; prefer existing sticky answers, then model additions.
+            merged["aliases"] = {**data["aliases"], **workflow.aliases}
+        # Always re-attach clarifications if the model omits or empties them.
+        clar = data.get("clarifications")
+        if clar:
+            # Upsert: keep prior answers when model drops answer text.
+            by_id = {c["id"]: c for c in clar if isinstance(c, dict) and c.get("id")}
+            for existing in workflow.clarifications:
+                dump = existing.model_dump(mode="json")
+                incoming = by_id.get(existing.id)
+                if incoming is None:
+                    by_id[existing.id] = dump
+                elif not (incoming.get("answer") or "").strip() and dump.get("answer"):
+                    incoming["answer"] = dump["answer"]
+            merged["clarifications"] = list(by_id.values())
+        else:
+            merged["clarifications"] = [
+                c.model_dump(mode="json") for c in workflow.clarifications
+            ]
+        # Force frozen fields
+        merged["intent"] = workflow.intent
+        merged["steps"] = [s.model_dump(mode="json") for s in workflow.steps]
+        merged["validators"] = workflow.validators.model_dump(mode="json")
+        return WorkflowDTO.model_validate(merged)
+    except Exception:  # noqa: BLE001
+        return workflow

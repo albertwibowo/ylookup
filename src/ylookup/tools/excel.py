@@ -66,6 +66,8 @@ class WorkbookProfile:
     investors_sheet: dict[str, Any]
     resolved_sheets: dict[str, str | None] = field(default_factory=dict)
     fingerprints: list[SheetFingerprint] = field(default_factory=list)
+    unresolved_columns: dict[str, list[str]] = field(default_factory=dict)
+    role_headers: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _cell_value(ws: Worksheet, row: int, col: int) -> Any:
@@ -235,6 +237,44 @@ def _find_sheet(wb, candidates: list[str], header_hints: list[str] | None = None
     )
 
 
+def resolve_header(
+    headers: list[str],
+    aliases: list[str],
+    *,
+    min_score: float = 0.55,
+) -> str | None:
+    """Pick the best matching header label from aliases (exact / substring / token)."""
+    if not aliases or not headers:
+        return None
+    best_header: str | None = None
+    best_score = -1.0
+    for header in headers:
+        if header is None:
+            continue
+        text = str(header).strip()
+        if not text:
+            continue
+        score = name_match_score(text, aliases)
+        if score > best_score + 1e-12:
+            best_score = score
+            best_header = text
+    if best_header is None or best_score < min_score:
+        return None
+    return best_header
+
+
+def _merge_column_aliases(
+    cur: dict[str, list[str]] | None,
+    dflt: dict[str, list[str]] | None,
+) -> dict[str, list[str]]:
+    cur = cur or {}
+    dflt = dflt or {}
+    out: dict[str, list[str]] = {}
+    for key in dict.fromkeys([*cur.keys(), *dflt.keys()]):
+        out[key] = list(dict.fromkeys([*(cur.get(key) or []), *(dflt.get(key) or [])]))
+    return out
+
+
 def _binding_hints(bindings: WorkflowBindings | None) -> dict[str, BindingHint]:
     """Merge workflow bindings with durable default name/header synonyms."""
     from ylookup.model.dto.workflow import BindingHint as BH
@@ -249,35 +289,76 @@ def _binding_hints(bindings: WorkflowBindings | None) -> dict[str, BindingHint]:
         # Prefer workflow hints first, then fall back to built-in synonyms/headers.
         sheet_hints = list(dict.fromkeys([*(cur.sheet_hints or []), *(dflt.sheet_hints or [])]))
         header_hints = list(dict.fromkeys([*(cur.header_hints or []), *(dflt.header_hints or [])]))
+        column_aliases = _merge_column_aliases(cur.column_aliases, dflt.column_aliases)
         return BH(
             role=cur.role or dflt.role,
             sheet_hints=sheet_hints,
             header_hints=header_hints,
+            column_aliases=column_aliases,
             resolved_sheet=cur.resolved_sheet,
         )
 
     return {role: merge(role) for role in ("diu", "lp_table", "coa", "fund_constants", "diu_legend")}
 
 
-def read_tracker_investors(ws: Worksheet) -> list[dict[str, Any]]:
-    """Read LP rows from Capital Call Tracker (header row with Investor column)."""
-    header_row = None
-    headers: dict[str, int] = {}
+def _row_header_map(ws: Worksheet, row: int, *, max_col: int = 40) -> dict[str, int]:
+    return {
+        str(_cell_value(ws, row, c)).strip(): c
+        for c in range(1, min(ws.max_column or 1, max_col) + 1)
+        if _cell_value(ws, row, c) is not None and str(_cell_value(ws, row, c)).strip()
+    }
+
+
+def _find_tracker_header_row(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]],
+) -> tuple[int | None, dict[str, int], dict[str, str | None]]:
+    """Locate LP header row; return (row, header→col, logical→header)."""
+    investor_aliases = column_aliases.get("investor") or ["Investor"]
+    id_aliases = column_aliases.get("id") or ["ID"]
+    commitment_aliases = column_aliases.get("commitment") or ["Commitment"]
+
+    best: tuple[int, dict[str, int], dict[str, str | None], float] | None = None
     for r in range(1, min(ws.max_row or 1, 40) + 1):
-        row_vals = {
-            str(_cell_value(ws, r, c)).strip(): c
-            for c in range(1, min(ws.max_column or 1, 30) + 1)
-            if _cell_value(ws, r, c) is not None
-        }
-        if "Investor" in row_vals and ("ID" in row_vals or "Commitment" in row_vals):
-            header_row = r
-            headers = row_vals
-            break
-    if header_row is None:
+        row_vals = _row_header_map(ws, r, max_col=30)
+        if not row_vals:
+            continue
+        labels = list(row_vals.keys())
+        inv_h = resolve_header(labels, investor_aliases)
+        id_h = resolve_header(labels, id_aliases)
+        commit_h = resolve_header(labels, commitment_aliases)
+        if not inv_h or not (id_h or commit_h):
+            continue
+        score = (
+            (name_match_score(inv_h, investor_aliases) if inv_h else 0.0)
+            + (name_match_score(id_h, id_aliases) if id_h else 0.0)
+            + (name_match_score(commit_h, commitment_aliases) if commit_h else 0.0)
+        )
+        resolved = {"investor": inv_h, "id": id_h, "commitment": commit_h}
+        if best is None or score > best[3]:
+            best = (r, row_vals, resolved, score)
+    if best is None:
+        return None, {}, {"investor": None, "id": None, "commitment": None}
+    return best[0], best[1], best[2]
+
+
+def read_tracker_investors(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
+    """Read LP rows from Capital Call Tracker (header row resolved via aliases)."""
+    aliases = column_aliases or {
+        "investor": ["Investor", "LP Name", "Limited Partner", "LP", "Investor Name"],
+        "id": ["ID", "Investor ID", "LP ID", "Investor Code"],
+        "commitment": ["Commitment", "Committed Capital", "Commitment Amount"],
+    }
+    header_row, headers, resolved = _find_tracker_header_row(ws, aliases)
+    if header_row is None or not resolved.get("investor"):
         return []
 
-    inv_col = headers["Investor"]
-    id_col = headers.get("ID")
+    inv_col = headers[resolved["investor"]]  # type: ignore[index]
+    id_header = resolved.get("id")
+    id_col = headers.get(id_header) if id_header else None
     investors: list[dict[str, Any]] = []
     for r in range(header_row + 1, (ws.max_row or header_row) + 1):
         name = _cell_value(ws, r, inv_col)
@@ -303,8 +384,39 @@ def read_tracker_investors(ws: Worksheet) -> list[dict[str, Any]]:
     return investors
 
 
-def read_fund_constants(ws: Worksheet, investors_ws: Worksheet | None) -> dict[str, Any]:
+def missing_tracker_columns(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]] | None = None,
+) -> list[str]:
+    """Logical fields that could not be resolved on the tracker header row."""
+    aliases = column_aliases or {}
+    header_row, _, resolved = _find_tracker_header_row(ws, aliases)
+    if header_row is None:
+        return ["investor"]
+    missing: list[str] = []
+    if not resolved.get("investor"):
+        missing.append("investor")
+    if not resolved.get("id") and not resolved.get("commitment"):
+        missing.append("id")
+    return missing
+
+
+def read_fund_constants(
+    ws: Worksheet,
+    investors_ws: Worksheet | None,
+    column_aliases: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     """Pull Legal Entity / Deal / Position / Bank Account / currency from sheets."""
+    aliases = column_aliases or {
+        "legal_entity": ["Legal Entity", "Entity", "LE"],
+        "legal_entity_domain": ["Legal Entity Domain", "Entity Domain", "LE Domain"],
+        "deal": ["Deal", "Deal Name"],
+        "position": ["Position", "Position Name"],
+        "batch_type": ["Batch Type"],
+        "bank_account": ["Bank Account", "Bank Acct", "Cash Account"],
+        "transaction_currency": ["Transaction Currency", "Currency", "CCY"],
+        "transaction_type": ["Transaction Type", "Trans Type"],
+    }
     constants: dict[str, Any] = {
         "legal_entity": _cell_value(ws, 1, 1),
         "transaction_currency": "USD",
@@ -316,44 +428,53 @@ def read_fund_constants(ws: Worksheet, investors_ws: Worksheet | None) -> dict[s
         "alloc_due": "User Provided",
         "starting_gl_ref": 1,
     }
-    # Legend block on tracker
+
+    # Legend / key-value block on tracker: resolve label keys via aliases.
+    label_to_dest = {
+        "legal_entity": "legal_entity",
+        "deal": "deal",
+        "position": "position",
+        "transaction_currency": "transaction_currency",
+        "transaction_type": "cash_trans_type",
+        "batch_type": "batch_type",
+    }
     for r in range(1, min(ws.max_row or 1, 60) + 1):
         key = _cell_value(ws, r, 1)
         val = _cell_value(ws, r, 2)
-        if key is None:
+        if key is None or val is None:
             continue
         k = str(key).strip()
-        if k == "Legal Entity" and val:
-            constants["legal_entity"] = val
-        elif k == "Deal" and val:
-            constants["deal"] = val
-        elif k == "Position" and val:
-            constants["position"] = val
-        elif k == "Transaction Currency" and val:
-            constants["transaction_currency"] = val
-        elif k == "Transaction Type" and val:
-            constants["cash_trans_type"] = val
-        elif k == "Batch Type" and val:
-            constants["batch_type"] = val
+        for logical, dest in label_to_dest.items():
+            if resolve_header([k], aliases.get(logical) or []) == k:
+                constants[dest] = val
+                break
 
     if investors_ws is not None:
         # Row 2 of Investors sheet holds fund-level constants in sample.
-        headers = {
+        header_labels = [
+            str(investors_ws.cell(1, c).value).strip()
+            for c in range(1, (investors_ws.max_column or 1) + 1)
+            if investors_ws.cell(1, c).value is not None
+        ]
+        header_cols = {
             str(investors_ws.cell(1, c).value).strip(): c
             for c in range(1, (investors_ws.max_column or 1) + 1)
             if investors_ws.cell(1, c).value is not None
         }
         row = 2
         mapping = {
-            "Legal Entity": "legal_entity",
-            "Legal Entity Domain": "legal_entity_domain",
-            "Deal": "deal",
-            "Position": "position",
-            "Batch Type": "batch_type",
-            "Bank Account": "bank_account",
+            "legal_entity": "legal_entity",
+            "legal_entity_domain": "legal_entity_domain",
+            "deal": "deal",
+            "position": "position",
+            "batch_type": "batch_type",
+            "bank_account": "bank_account",
         }
-        for header, dest in mapping.items():
-            col = headers.get(header)
+        for logical, dest in mapping.items():
+            matched = resolve_header(header_labels, aliases.get(logical) or [])
+            if not matched:
+                continue
+            col = header_cols.get(matched)
             if col:
                 val = investors_ws.cell(row, col).value
                 if val is not None and str(val).strip():
@@ -379,24 +500,88 @@ def read_diu_legend(ws: Worksheet) -> dict[str, Any]:
     return legend
 
 
-def read_coa(ws: Worksheet) -> list[dict[str, Any]]:
-    headers = [ws.cell(1, c).value for c in range(1, (ws.max_column or 1) + 1)]
+def _coa_header_map(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]],
+) -> dict[str, str | None]:
+    headers = [
+        str(ws.cell(1, c).value).strip()
+        for c in range(1, (ws.max_column or 1) + 1)
+        if ws.cell(1, c).value is not None
+    ]
+    return {
+        "account_type": resolve_header(headers, column_aliases.get("account_type") or ["Account Type"]),
+        "gl_account_code": resolve_header(
+            headers, column_aliases.get("gl_account_code") or ["GL Account Code"]
+        ),
+        "gl_account": resolve_header(headers, column_aliases.get("gl_account") or ["GL Account"]),
+        "trans_type": resolve_header(headers, column_aliases.get("trans_type") or ["Trans Type"]),
+    }
+
+
+def missing_coa_columns(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]] | None = None,
+) -> list[str]:
+    aliases = column_aliases or {}
+    resolved = _coa_header_map(ws, aliases)
+    required = ("trans_type", "gl_account_code")
+    return [field for field in required if not resolved.get(field)]
+
+
+def read_coa(
+    ws: Worksheet,
+    column_aliases: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
+    aliases = column_aliases or {
+        "account_type": ["Account Type", "Acct Type", "Type"],
+        "gl_account_code": ["GL Account Code", "Account Code", "GL Code", "Code"],
+        "gl_account": ["GL Account", "Account Name", "Account"],
+        "trans_type": ["Trans Type", "Transaction Type", "Txn Type"],
+    }
+    headers = [
+        str(ws.cell(1, c).value).strip()
+        for c in range(1, (ws.max_column or 1) + 1)
+        if ws.cell(1, c).value is not None
+    ]
+    header_cols = {
+        str(ws.cell(1, c).value).strip(): c
+        for c in range(1, (ws.max_column or 1) + 1)
+        if ws.cell(1, c).value is not None
+    }
+    resolved = _coa_header_map(ws, aliases)
+    if not resolved.get("trans_type"):
+        return []
+
+    def col_for(logical: str) -> int | None:
+        header = resolved.get(logical)
+        return header_cols.get(header) if header else None
+
+    account_type_col = col_for("account_type")
+    gl_code_col = col_for("gl_account_code")
+    gl_account_col = col_for("gl_account")
+    trans_type_col = col_for("trans_type")
+    assert trans_type_col is not None
+
     rows: list[dict[str, Any]] = []
     for r in range(2, (ws.max_row or 1) + 1):
-        item = {
-            "account_type": ws.cell(r, 1).value,
-            "gl_account_code": ws.cell(r, 2).value,
-            "gl_account": ws.cell(r, 3).value,
-            "trans_type": ws.cell(r, 4).value,
-            "Account Type": ws.cell(r, 1).value,
-            "GL Account Code": ws.cell(r, 2).value,
-            "GL Account": ws.cell(r, 3).value,
-            "Trans Type": ws.cell(r, 4).value,
-        }
-        if item["trans_type"] is None:
+        trans_type = ws.cell(r, trans_type_col).value
+        if trans_type is None:
             continue
+        account_type = ws.cell(r, account_type_col).value if account_type_col else None
+        gl_account_code = ws.cell(r, gl_code_col).value if gl_code_col else None
+        gl_account = ws.cell(r, gl_account_col).value if gl_account_col else None
+        item = {
+            "account_type": account_type,
+            "gl_account_code": gl_account_code,
+            "gl_account": gl_account,
+            "trans_type": trans_type,
+            "Account Type": account_type,
+            "GL Account Code": gl_account_code,
+            "GL Account": gl_account,
+            "Trans Type": trans_type,
+        }
         rows.append(item)
-    # Keep headers for debugging
     _ = headers
     return rows
 
@@ -485,6 +670,10 @@ def profile_workbook(
     diu_ws = wb[diu_name] if diu_name else None
     legend_ws = wb[legend_name] if legend_name else tracker_ws
 
+    lp_aliases = hints["lp_table"].column_aliases
+    coa_aliases = hints["coa"].column_aliases
+    fund_aliases = hints["fund_constants"].column_aliases
+
     diu_headers = DIU_HEADERS[:]
     if diu_ws is not None:
         diu_headers = [
@@ -493,14 +682,69 @@ def profile_workbook(
             if diu_ws.cell(1, c).value is not None
         ]
 
-    investors = read_tracker_investors(tracker_ws) if tracker_ws else []
+    unresolved_columns: dict[str, list[str]] = {}
+    role_headers: dict[str, list[str]] = {}
+
+    investors: list[dict[str, Any]] = []
+    if tracker_ws:
+        _, header_map, _ = _find_tracker_header_row(tracker_ws, lp_aliases)
+        if header_map:
+            role_headers["lp_table"] = list(header_map.keys())
+        else:
+            # Prefer a wide row that looks like headers (has ID/Commitment-like cells)
+            # so col:* options are real column names, not whole-sheet fingerprint noise.
+            fallback_headers: list[str] = []
+            id_aliases = lp_aliases.get("id") or ["ID"]
+            commit_aliases = lp_aliases.get("commitment") or ["Commitment"]
+            for r in range(1, min(tracker_ws.max_row or 1, 40) + 1):
+                row_vals = _row_header_map(tracker_ws, r, max_col=30)
+                if len(row_vals) < 3:
+                    continue
+                labels = list(row_vals.keys())
+                if resolve_header(labels, id_aliases) or resolve_header(labels, commit_aliases):
+                    fallback_headers = labels
+                    break
+                if len(labels) > len(fallback_headers):
+                    fallback_headers = labels
+            if fallback_headers:
+                role_headers["lp_table"] = fallback_headers
+            elif tracker_name:
+                fp = next((f for f in fingerprints if f.name == tracker_name), None)
+                if fp:
+                    role_headers["lp_table"] = sorted(fp.labels)
+        investors = read_tracker_investors(tracker_ws, column_aliases=lp_aliases)
+        if not investors:
+            missing = missing_tracker_columns(tracker_ws, column_aliases=lp_aliases)
+            if missing:
+                unresolved_columns["lp_table"] = missing
+
     constants = (
-        read_fund_constants(tracker_ws, inv_ws)
+        read_fund_constants(tracker_ws, inv_ws, column_aliases=fund_aliases)
         if tracker_ws
         else {"legal_entity": None, "batch_index": 1}
     )
     legend = read_diu_legend(legend_ws) if legend_ws else {}
-    coa_rows = read_coa(coa_ws) if coa_ws else []
+
+    coa_rows: list[dict[str, Any]] = []
+    if coa_ws:
+        role_headers["coa"] = [
+            str(coa_ws.cell(1, c).value).strip()
+            for c in range(1, (coa_ws.max_column or 1) + 1)
+            if coa_ws.cell(1, c).value is not None
+        ]
+        coa_rows = read_coa(coa_ws, column_aliases=coa_aliases)
+        if not coa_rows:
+            missing = missing_coa_columns(coa_ws, column_aliases=coa_aliases)
+            if missing:
+                unresolved_columns["coa"] = missing
+
+    if inv_ws is not None:
+        role_headers["fund_constants"] = [
+            str(inv_ws.cell(1, c).value).strip()
+            for c in range(1, (inv_ws.max_column or 1) + 1)
+            if inv_ws.cell(1, c).value is not None
+        ]
+
     inv_sheet: dict[str, Any] = {}
     if inv_ws is not None:
         inv_sheet = {
@@ -524,6 +768,8 @@ def profile_workbook(
             "diu_legend": legend_name,
         },
         fingerprints=fingerprints,
+        unresolved_columns=unresolved_columns,
+        role_headers=role_headers,
     )
 
 

@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "intent": "Fill DIU tab for capital call receipts from bank PDF",
+  "bindings": {
+    "diu": {
+      "role": "diu",
+      "sheet_hints": [
+        "DIU",
+        "Data Import Utility",
+        "Data Import"
+      ],
+      "header_hints": [
+        "Transaction GL Reference",
+        "JE Index",
+        "Is Debit",
+        "Amount (Local)",
+        "Transaction Type"
+      ],
+      "column_aliases": {
+        "transaction_gl_reference": [
+          "Transaction GL Reference",
+          "GL Reference",
+          "GL Ref"
+        ],
+        "je_index": [
+          "JE Index",
+          "Journal Entry Index"
+        ],
+        "is_debit": [
+          "Is Debit",
+          "Debit"
+        ],
+        "amount_local": [
+          "Amount (Local)",
+          "Local Amount",
+          "Amount"
+        ],
+        "transaction_type": [
+          "Transaction Type",
+          "Trans Type"
+        ],
+        "investor": [
+          "Investor",
+          "LP Name",
+          "Limited Partner"
+        ]
+      },
+      "resolved_sheet": "DIU"
+    },
+    "lp_table": {
+      "role": "lp_table",
+      "sheet_hints": [
+        "Capital Call Tracker",
+        "Tracker",
+        "LP Table",
+        "Investor Schedule"
+      ],
+      "header_hints": [
+        "Investor",
+        "ID",
+        "Commitment"
+      ],
+      "column_aliases": {
+        "investor": [
+          "Investor",
+          "LP Name",
+          "Limited Partner",
+          "LP",
+          "Investor Name"
+        ],
+        "id": [
+          "ID",
+          "Investor ID",
+          "LP ID",
+          "Investor Code"
+        ],
+        "commitment": [
+          "Commitment",
+          "Committed Capital",
+          "Commitment Amount"
+        ]
+      },
+      "resolved_sheet": "Capital Call Tracker"
+    },
+    "coa": {
+      "role": "coa",
+      "sheet_hints": [
+        "PCS Chart of Accounts (Global)",
+        "Chart of Accounts",
+        "Chart Accounts",
+        "COA",
+        "GL Accounts"
+      ],
+      "header_hints": [
+        "Trans Type",
+        "GL Account Code",
+        "GL Account"
+      ],
+      "column_aliases": {
+        "account_type": [
+          "Account Type",
+          "Acct Type",
+          "Type"
+        ],
+        "gl_account_code": [
+          "GL Account Code",
+          "Account Code",
+          "GL Code",
+          "Code"
+        ],
+        "gl_account": [
+          "GL Account",
+          "Account Name",
+          "Account"
+        ],
+        "trans_type": [
+          "Trans Type",
+          "Transaction Type",
+          "Txn Type"
+        ]
+      },
+      "resolved_sheet": "PCS Chart of Accounts (Global)"
+    },
+    "fund_constants": {
+      "role": "fund_constants",
+      "sheet_hints": [
+        "Investors",
+        "Fund Constants",
+        "Capital Call Tracker"
+      ],
+      "header_hints": [
+        "Legal Entity",
+        "Legal Entity Domain",
+        "Bank Account",
+        "Deal"
+      ],
+      "column_aliases": {
+        "legal_entity": [
+          "Legal Entity",
+          "Entity",
+          "LE"
+        ],
+        "legal_entity_domain": [
+          "Legal Entity Domain",
+          "Entity Domain",
+          "LE Domain"
+        ],
+        "deal": [
+          "Deal",
+          "Deal Name"
+        ],
+        "position": [
+          "Position",
+          "Position Name"
+        ],
+        "batch_type": [
+          "Batch Type"
+        ],
+        "bank_account": [
+          "Bank Account",
+          "Bank Acct",
+          "Cash Account"
+        ],
+        "transaction_currency": [
+          "Transaction Currency",
+          "Currency",
+          "CCY"
+        ],
+        "transaction_type": [
+          "Transaction Type",
+          "Trans Type"
+        ]
+      },
+      "resolved_sheet": "Investors"
+    },
+    "diu_legend": {
+      "role": "diu_legend",
+      "sheet_hints": [
+        "Capital Call Tracker",
+        "Tracker",
+        "DIU Legend"
+      ],
+      "header_hints": [
+        "DIU Fields"
+      ],
+      "column_aliases": {},
+      "resolved_sheet": "Capital Call Tracker"
+    }
+  },
+  "steps": [
+    {
+      "id": "parse_pdf",
+      "op": "parse_pdf",
+      "params": {}
+    },
+    {
+      "id": "match_payments",
+      "op": "match_payments",
+      "params": {}
+    },
+    {
+      "id": "build_diu_rows",
+      "op": "build_diu_rows",
+      "params": {}
+    },
+    {
+      "id": "write_diu",
+      "op": "write_diu",
+      "params": {}
+    }
+  ],
+  "validators": {
+    "row_count_equals_two_x_lps": true,
+    "je_pairs_balance": true,
+    "coa_accounts_exist": true,
+    "gl_refs_contiguous": true,
+    "match_confidence_gate": true
+  },
+  "policies": {
+    "on_no_match": "leave_unpaid",
+    "emit": "all_tracker_investors",
+    "match_min_score": 0.55,
+    "match_ambiguity_margin": 0.08,
+    "starting_gl_ref": 1,
+    "cash_trans_type": "Cash - Received - USD",
+    "due_trans_type": "Due From Investors"
+  },
+  "clarifications": [],
+  "aliases": {},
+  "metadata": {}
+}

@@ -84,6 +84,50 @@ def _missing_binding_ambiguities(profile: WorkbookProfile, workflow: WorkflowDTO
     return out
 
 
+_COLUMN_FIELD_LABELS = {
+    "investor": "investor name column",
+    "id": "investor ID (or commitment) column",
+    "commitment": "commitment column",
+    "trans_type": "transaction type column",
+    "gl_account_code": "GL account code column",
+    "gl_account": "GL account name column",
+    "account_type": "account type column",
+}
+
+
+def _missing_column_ambiguities(profile: WorkbookProfile, workflow: WorkflowDTO) -> list[Ambiguity]:
+    """Ask which header maps to a logical field when the sheet resolved but columns did not."""
+    out: list[Ambiguity] = []
+    clar_map = workflow.clarification_map()
+    for role, fields in profile.unresolved_columns.items():
+        options = list(profile.role_headers.get(role) or [])
+        if not options:
+            fp_name = profile.resolved_sheets.get(role)
+            fp = next((f for f in profile.fingerprints if f.name == fp_name), None)
+            if fp:
+                options = sorted(fp.labels)[:40]
+        for field_name in fields:
+            qid = f"col:{role}:{field_name}"
+            if qid in clar_map:
+                continue
+            label = _COLUMN_FIELD_LABELS.get(field_name, field_name)
+            sheet = profile.resolved_sheets.get(role) or role
+            out.append(
+                Ambiguity(
+                    clarification=Clarification(
+                        id=qid,
+                        question=(
+                            f"Sheet '{sheet}' is bound as {role}, but the {label} "
+                            f"could not be resolved. Which header is it? Options: {options[:20]}"
+                        ),
+                        options=options[:40],
+                    ),
+                    detail=f"column resolve failed for {role}.{field_name}",
+                )
+            )
+    return out
+
+
 def _collect_match_ambiguities(matches: list[PaymentMatch]) -> list[Ambiguity]:
     out: list[Ambiguity] = []
     for m in matches:
@@ -119,14 +163,26 @@ def execute_workflow(
     """Run workflow steps. Never prompts; uses workflow clarifications/aliases."""
     result = RunResult(workflow=workflow)
 
-    # Apply any prior bind:* answers before profiling so renamed sheets stick.
+    # Apply any prior bind:* / col:* answers before profiling so renames stick.
     for qid, answer in workflow.clarification_map().items():
-        if not qid.startswith("bind:"):
-            continue
-        role = qid.removeprefix("bind:")
-        binding = getattr(workflow.bindings, role, None)
-        if binding is not None and answer:
-            binding.resolved_sheet = answer
+        if qid.startswith("bind:"):
+            role = qid.removeprefix("bind:")
+            binding = getattr(workflow.bindings, role, None)
+            if binding is not None and answer:
+                binding.resolved_sheet = answer
+        elif qid.startswith("col:") and answer:
+            parts = qid.split(":", 2)
+            if len(parts) != 3:
+                continue
+            _, role, field_name = parts
+            binding = getattr(workflow.bindings, role, None)
+            if binding is None:
+                continue
+            aliases = list(binding.column_aliases.get(field_name) or [])
+            if answer not in aliases:
+                binding.column_aliases[field_name] = [answer, *aliases]
+            if answer not in binding.header_hints:
+                binding.header_hints = [answer, *binding.header_hints]
 
     profile = profile_workbook(input_xlsx, bindings=workflow.bindings)
     workflow = resolve_bindings(workflow, profile)
@@ -146,12 +202,26 @@ def execute_workflow(
         )
         return result
 
+    col_ambiguities = _missing_column_ambiguities(profile, workflow)
+    if collect_ambiguities and col_ambiguities:
+        result.ambiguities.extend(col_ambiguities)
+        # Defer hard errors until required columns are chosen.
+        return result
+
     if not profile.tracker_investors:
-        result.errors.append("No tracker investors found")
+        missing = profile.unresolved_columns.get("lp_table") or ["investor"]
+        result.errors.append(
+            "No tracker investors found — sheet resolved but required columns "
+            f"unresolved: {', '.join(missing)}"
+        )
         return result
 
     if not profile.coa_rows:
-        result.errors.append("Chart of Accounts resolved but contains no usable rows")
+        missing = profile.unresolved_columns.get("coa") or ["trans_type"]
+        result.errors.append(
+            "Chart of Accounts resolved but contains no usable rows — required columns "
+            f"unresolved: {', '.join(missing)}"
+        )
         return result
 
     policies = workflow.policies

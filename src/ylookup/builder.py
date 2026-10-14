@@ -89,6 +89,17 @@ def _apply_answers(workflow: WorkflowDTO, answers: dict[str, str]) -> None:
                 # Keep the chosen name as a sticky hint for later patches.
                 if answer not in binding.sheet_hints:
                     binding.sheet_hints = [answer, *binding.sheet_hints]
+        if qid.startswith("col:") and answer:
+            parts = qid.split(":", 2)
+            if len(parts) == 3:
+                _, role, field_name = parts
+                binding = getattr(workflow.bindings, role, None)
+                if binding is not None:
+                    aliases = list(binding.column_aliases.get(field_name) or [])
+                    if answer not in aliases:
+                        binding.column_aliases[field_name] = [answer, *aliases]
+                    if answer not in binding.header_hints:
+                        binding.header_hints = [answer, *binding.header_hints]
         # Find existing clarification question text if any
         existing_q = next((c.question for c in workflow.clarifications if c.id == qid), qid)
         workflow.upsert_clarification(

@@ -30,6 +30,13 @@ class BindingHint(BaseModel):
         default_factory=list,
         description="Expected header labels that help confirm the correct sheet or table.",
     )
+    column_aliases: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Logical field → candidate header labels for rename/reorder resilience "
+            "(e.g. investor → [Investor, LP Name])."
+        ),
+    )
     resolved_sheet: str | None = Field(
         default=None,
         description="Concrete workbook sheet name after resolution; null until matched.",
@@ -48,6 +55,14 @@ class WorkflowBindings(BaseModel):
                 "Amount (Local)",
                 "Transaction Type",
             ],
+            column_aliases={
+                "transaction_gl_reference": ["Transaction GL Reference", "GL Reference", "GL Ref"],
+                "je_index": ["JE Index", "Journal Entry Index"],
+                "is_debit": ["Is Debit", "Debit"],
+                "amount_local": ["Amount (Local)", "Local Amount", "Amount"],
+                "transaction_type": ["Transaction Type", "Trans Type"],
+                "investor": ["Investor", "LP Name", "Limited Partner"],
+            },
         ),
         description="Binding for the DIU output tab written by the workflow.",
     )
@@ -56,6 +71,11 @@ class WorkflowBindings(BaseModel):
             role="lp_table",
             sheet_hints=["Capital Call Tracker", "Tracker", "LP Table", "Investor Schedule"],
             header_hints=["Investor", "ID", "Commitment"],
+            column_aliases={
+                "investor": ["Investor", "LP Name", "Limited Partner", "LP", "Investor Name"],
+                "id": ["ID", "Investor ID", "LP ID", "Investor Code"],
+                "commitment": ["Commitment", "Committed Capital", "Commitment Amount"],
+            },
         ),
         description="Binding for the LP / capital-call tracker table of investors.",
     )
@@ -70,6 +90,12 @@ class WorkflowBindings(BaseModel):
                 "GL Accounts",
             ],
             header_hints=["Trans Type", "GL Account Code", "GL Account"],
+            column_aliases={
+                "account_type": ["Account Type", "Acct Type", "Type"],
+                "gl_account_code": ["GL Account Code", "Account Code", "GL Code", "Code"],
+                "gl_account": ["GL Account", "Account Name", "Account"],
+                "trans_type": ["Trans Type", "Transaction Type", "Txn Type"],
+            },
         ),
         description="Binding for the chart of accounts used to map transaction types to GL codes.",
     )
@@ -78,6 +104,16 @@ class WorkflowBindings(BaseModel):
             role="fund_constants",
             sheet_hints=["Investors", "Fund Constants", "Capital Call Tracker"],
             header_hints=["Legal Entity", "Legal Entity Domain", "Bank Account", "Deal"],
+            column_aliases={
+                "legal_entity": ["Legal Entity", "Entity", "LE"],
+                "legal_entity_domain": ["Legal Entity Domain", "Entity Domain", "LE Domain"],
+                "deal": ["Deal", "Deal Name"],
+                "position": ["Position", "Position Name"],
+                "batch_type": ["Batch Type"],
+                "bank_account": ["Bank Account", "Bank Acct", "Cash Account"],
+                "transaction_currency": ["Transaction Currency", "Currency", "CCY"],
+                "transaction_type": ["Transaction Type", "Trans Type"],
+            },
         ),
         description="Binding for fund-level constants (entity, currency, dates, etc.).",
     )
