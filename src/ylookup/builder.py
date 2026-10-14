@@ -131,6 +131,7 @@ def build_workflow(
     context = Path(context_path).read_text(encoding="utf-8") if context_path else None
 
     summary = _profile_summary(input_xlsx)
+    print("LLM: proposing workflow…", flush=True)
     try:
         workflow = propose_workflow(summary, context)
     except Exception:  # noqa: BLE001
@@ -311,6 +312,7 @@ def build_workflow(
                 return report
 
             # Patch for next iteration
+            print(f"LLM: patching workflow (iter {iteration})…", flush=True)
             workflow = patch_workflow(
                 workflow,
                 compare.summary,

@@ -1,0 +1,594 @@
+{
+  "version": 1,
+  "intent": "Fill DIU tab for capital call receipts from bank PDF",
+  "bindings": {
+    "diu": {
+      "role": "diu",
+      "sheet_hints": [
+        "DIU",
+        "Data Import Utility",
+        "Data Import"
+      ],
+      "header_hints": [
+        "investor amount (local)",
+        "investor amount (le)",
+        "vehicle",
+        "investor domain",
+        "bank account",
+        "batch comments",
+        "transaction comments",
+        "amount (le)",
+        "account",
+        "allocation rule",
+        "transaction currency",
+        "effective date",
+        "gl date",
+        "trans index",
+        "batch type",
+        "batch index",
+        "position",
+        "deal",
+        "legal entity domain",
+        "legal entity",
+        "investor",
+        "transaction type",
+        "amount (local)",
+        "is debit",
+        "je index",
+        "transaction gl reference",
+        "Legal Entity",
+        "Legal Entity Domain",
+        "Deal",
+        "Position",
+        "Batch Index",
+        "Batch Type",
+        "JE Index",
+        "Trans Index",
+        "GL Date",
+        "Effective Date",
+        "Transaction Currency",
+        "Allocation Rule",
+        "Transaction Type",
+        "Account",
+        "Is Debit",
+        "Amount (Local)",
+        "Amount (LE)",
+        "Transaction Comments",
+        "Batch Comments",
+        "Bank Account",
+        "Investor",
+        "Investor Domain",
+        "Vehicle",
+        "Investor Amount (LE)",
+        "Investor Amount (Local)",
+        "Transaction GL Reference"
+      ],
+      "column_aliases": {
+        "transaction_gl_reference": [
+          "transaction gl reference",
+          "Transaction GL Reference",
+          "GL Reference",
+          "GL Ref"
+        ],
+        "je_index": [
+          "je index",
+          "JE Index",
+          "Journal Entry Index"
+        ],
+        "is_debit": [
+          "is debit",
+          "Is Debit",
+          "Debit"
+        ],
+        "amount_local": [
+          "amount (local)",
+          "Amount (Local)",
+          "Local Amount",
+          "Amount"
+        ],
+        "transaction_type": [
+          "transaction type",
+          "Transaction Type",
+          "Trans Type"
+        ],
+        "investor": [
+          "investor",
+          "Investor",
+          "LP Name",
+          "Limited Partner"
+        ],
+        "legal_entity": [
+          "legal entity",
+          "Legal Entity",
+          "Entity",
+          "LE"
+        ],
+        "legal_entity_domain": [
+          "legal entity domain",
+          "Legal Entity Domain",
+          "Entity Domain",
+          "LE Domain"
+        ],
+        "deal": [
+          "deal",
+          "Deal",
+          "Deal Name"
+        ],
+        "position": [
+          "position",
+          "Position",
+          "Position Name"
+        ],
+        "batch_index": [
+          "batch index",
+          "Batch Index",
+          "Batch #"
+        ],
+        "batch_type": [
+          "batch type",
+          "Batch Type"
+        ],
+        "trans_index": [
+          "trans index",
+          "Trans Index",
+          "Transaction Index"
+        ],
+        "gl_date": [
+          "gl date",
+          "GL Date",
+          "Posting Date"
+        ],
+        "effective_date": [
+          "effective date",
+          "Effective Date",
+          "Eff Date"
+        ],
+        "transaction_currency": [
+          "transaction currency",
+          "Transaction Currency",
+          "Currency",
+          "CCY"
+        ],
+        "allocation_rule": [
+          "allocation rule",
+          "Allocation Rule",
+          "Alloc Rule"
+        ],
+        "account": [
+          "account",
+          "Account",
+          "GL Account",
+          "Account Code"
+        ],
+        "amount_le": [
+          "amount (le)",
+          "Amount (LE)",
+          "Local Entity Amount"
+        ],
+        "transaction_comments": [
+          "transaction comments",
+          "Transaction Comments",
+          "Txn Comments"
+        ],
+        "batch_comments": [
+          "batch comments",
+          "Batch Comments",
+          "Batch Notes"
+        ],
+        "bank_account": [
+          "bank account",
+          "Bank Account",
+          "Bank Acct",
+          "Cash Account"
+        ],
+        "investor_domain": [
+          "investor domain",
+          "Investor Domain",
+          "Investor Domain Name"
+        ],
+        "vehicle": [
+          "vehicle",
+          "Vehicle",
+          "Fund Vehicle"
+        ],
+        "investor_amount_le": [
+          "investor amount (le)",
+          "Investor Amount (LE)",
+          "Investor Local Amount"
+        ],
+        "investor_amount_local": [
+          "investor amount (local)",
+          "Investor Amount (Local)",
+          "Investor Local Amount"
+        ]
+      },
+      "resolved_sheet": "DIU"
+    },
+    "lp_table": {
+      "role": "lp_table",
+      "sheet_hints": [
+        "Capital Call Tracker",
+        "Tracker",
+        "LP Table",
+        "Investor Schedule"
+      ],
+      "header_hints": [
+        "ID",
+        "Subscription",
+        "Investor",
+        "Commitment",
+        "% Ownership",
+        "Fee",
+        "Expenses",
+        "Investment",
+        "Call #7 - Total Call",
+        "Cumulative Capital Contributions\n(Prior)",
+        "Cumulative Capital Contributions\n(Current)",
+        "Unfunded Balance (Prior)",
+        "Unfunded Balance (Current)",
+        "Date \nas per bank statement",
+        "Amount Received",
+        "Amount outstanding"
+      ],
+      "column_aliases": {
+        "investor": [
+          "Investor",
+          "LP Name",
+          "Limited Partner",
+          "LP",
+          "Investor Name"
+        ],
+        "id": [
+          "ID",
+          "Investor ID",
+          "LP ID",
+          "Investor Code"
+        ],
+        "commitment": [
+          "Commitment",
+          "Committed Capital",
+          "Commitment Amount"
+        ],
+        "subscription": [
+          "Subscription",
+          "Sub"
+        ],
+        "ownership": [
+          "% Ownership",
+          "Ownership %",
+          "Equity %"
+        ],
+        "fee": [
+          "Fee",
+          "Management Fee"
+        ],
+        "expenses": [
+          "Expenses",
+          "Admin Fee"
+        ],
+        "investment": [
+          "Investment",
+          "Total Invested"
+        ],
+        "call_total": [
+          "Call #7 - Total Call",
+          "Total Call",
+          "Call Amount"
+        ],
+        "cumulative_prior": [
+          "Cumulative Capital Contributions\n(Prior)",
+          "Prior Contributions"
+        ],
+        "cumulative_current": [
+          "Cumulative Capital Contributions\n(Current)",
+          "Current Contributions"
+        ],
+        "unfunded_prior": [
+          "Unfunded Balance (Prior)",
+          "Prior Unfunded"
+        ],
+        "unfunded_current": [
+          "Unfunded Balance (Current)",
+          "Current Unfunded"
+        ],
+        "date_bank": [
+          "Date \nas per bank statement",
+          "Bank Date",
+          "Date"
+        ],
+        "amount_received": [
+          "Amount Received",
+          "Received"
+        ],
+        "amount_outstanding": [
+          "Amount outstanding",
+          "Outstanding"
+        ]
+      },
+      "resolved_sheet": "Capital Call Tracker"
+    },
+    "coa": {
+      "role": "coa",
+      "sheet_hints": [
+        "PCS Chart of Accounts (Global)",
+        "Chart of Accounts",
+        "Chart Accounts",
+        "COA",
+        "GL Accounts"
+      ],
+      "header_hints": [
+        "Account Type",
+        "GL Account Code",
+        "GL Account",
+        "Trans Type"
+      ],
+      "column_aliases": {
+        "account_type": [
+          "Account Type",
+          "Acct Type",
+          "Type"
+        ],
+        "gl_account_code": [
+          "GL Account Code",
+          "Account Code",
+          "GL Code",
+          "Code"
+        ],
+        "gl_account": [
+          "GL Account",
+          "Account Name",
+          "Account"
+        ],
+        "trans_type": [
+          "Trans Type",
+          "Transaction Type",
+          "Txn Type"
+        ]
+      },
+      "resolved_sheet": "Chart Accounts"
+    },
+    "fund_constants": {
+      "role": "fund_constants",
+      "sheet_hints": [
+        "Investors",
+        "Fund Constants",
+        "Capital Call Tracker"
+      ],
+      "header_hints": [
+        "Legal Entity",
+        "Legal Entity Domain",
+        "Deal",
+        "Position",
+        "Batch Type",
+        "Bank Account",
+        "Investor"
+      ],
+      "column_aliases": {
+        "legal_entity": [
+          "Legal Entity",
+          "Entity",
+          "LE"
+        ],
+        "legal_entity_domain": [
+          "Legal Entity Domain",
+          "Entity Domain",
+          "LE Domain"
+        ],
+        "deal": [
+          "Deal",
+          "Deal Name"
+        ],
+        "position": [
+          "Position",
+          "Position Name"
+        ],
+        "batch_type": [
+          "Batch Type"
+        ],
+        "bank_account": [
+          "Bank Account",
+          "Bank Acct",
+          "Cash Account"
+        ],
+        "transaction_currency": [
+          "Transaction Currency",
+          "Currency",
+          "CCY"
+        ],
+        "transaction_type": [
+          "Transaction Type",
+          "Trans Type"
+        ],
+        "investor": [
+          "Investor",
+          "LP Name",
+          "Limited Partner"
+        ]
+      },
+      "resolved_sheet": "Investors"
+    },
+    "diu_legend": {
+      "role": "diu_legend",
+      "sheet_hints": [
+        "Capital Call Tracker",
+        "Tracker",
+        "DIU Legend"
+      ],
+      "header_hints": [
+        "DIU Fields"
+      ],
+      "column_aliases": {},
+      "resolved_sheet": "Capital Call Tracker"
+    }
+  },
+  "steps": [
+    {
+      "id": "parse_pdf",
+      "op": "parse_pdf",
+      "params": {
+        "source_type": "pdf",
+        "sheet_hints": [
+          "Bank Statement Staging",
+          "Bank Statement",
+          "Staging"
+        ],
+        "header_hints": [
+          "Date",
+          "Description",
+          "Amount",
+          "Reference",
+          "Transaction GL Reference"
+        ]
+      }
+    },
+    {
+      "id": "match_payments",
+      "op": "match_payments",
+      "params": {
+        "lp_table_sheet_hints": [
+          "Capital Call Tracker",
+          "Tracker",
+          "LP Table",
+          "Investor Schedule"
+        ],
+        "lp_table_header_hints": [
+          "Investor",
+          "ID",
+          "Commitment",
+          "Capital Call Amount"
+        ],
+        "match_min_score": 0.55,
+        "match_ambiguity_margin": 0.08,
+        "on_no_match": "leave_unpaid"
+      }
+    },
+    {
+      "id": "build_diu_rows",
+      "op": "build_diu_rows",
+      "params": {
+        "diu_sheet_hints": [
+          "DIU",
+          "Data Import Utility",
+          "Data Import"
+        ],
+        "diu_header_hints": [
+          "Legal Entity",
+          "Legal Entity Domain",
+          "Deal",
+          "Position",
+          "Batch Index",
+          "Batch Type",
+          "JE Index",
+          "Trans Index",
+          "GL Date",
+          "Effective Date",
+          "Transaction Currency",
+          "Allocation Rule",
+          "Transaction Type",
+          "Account",
+          "Is Debit",
+          "Amount (Local)",
+          "Amount (LE)",
+          "Transaction Comments",
+          "Batch Comments",
+          "Bank Account",
+          "Investor",
+          "Investor Domain",
+          "Vehicle",
+          "Investor Amount (LE)",
+          "Investor Amount (Local)",
+          "Transaction GL Reference"
+        ],
+        "coa_sheet_hints": [
+          "PCS Chart of Accounts (Global)",
+          "Chart of Accounts",
+          "Chart Accounts",
+          "COA",
+          "GL Accounts"
+        ],
+        "coa_header_hints": [
+          "Trans Type",
+          "GL Account Code",
+          "GL Account"
+        ],
+        "fund_constants_sheet_hints": [
+          "Investors",
+          "Fund Constants",
+          "Capital Call Tracker"
+        ],
+        "fund_constants_header_hints": [
+          "Legal Entity",
+          "Legal Entity Domain",
+          "Bank Account",
+          "Deal",
+          "Position",
+          "Batch Type",
+          "Transaction Currency",
+          "Transaction Type"
+        ],
+        "emit": "all_tracker_investors",
+        "starting_gl_ref": 1,
+        "cash_trans_type": "Cash - Received - USD",
+        "due_trans_type": "Due From Investors"
+      }
+    },
+    {
+      "id": "write_diu",
+      "op": "write_diu",
+      "params": {
+        "target_sheet_hints": [
+          "DIU",
+          "Data Import Utility",
+          "Data Import"
+        ],
+        "target_header_hints": [
+          "Legal Entity",
+          "Legal Entity Domain",
+          "Deal",
+          "Position",
+          "Batch Index",
+          "Batch Type",
+          "JE Index",
+          "Trans Index",
+          "GL Date",
+          "Effective Date",
+          "Transaction Currency",
+          "Allocation Rule",
+          "Transaction Type",
+          "Account",
+          "Is Debit",
+          "Amount (Local)",
+          "Amount (LE)",
+          "Transaction Comments",
+          "Batch Comments",
+          "Bank Account",
+          "Investor",
+          "Investor Domain",
+          "Vehicle",
+          "Investor Amount (LE)",
+          "Investor Amount (Local)",
+          "Transaction GL Reference"
+        ]
+      }
+    }
+  ],
+  "validators": {
+    "row_count_equals_two_x_lps": true,
+    "je_pairs_balance": true,
+    "coa_accounts_exist": true,
+    "gl_refs_contiguous": true,
+    "match_confidence_gate": true
+  },
+  "policies": {
+    "on_no_match": "leave_unpaid",
+    "emit": "all_tracker_investors",
+    "match_min_score": 0.55,
+    "match_ambiguity_margin": 0.08,
+    "starting_gl_ref": 1,
+    "cash_trans_type": "Cash - Received - USD",
+    "due_trans_type": "Due From Investors"
+  },
+  "clarifications": [],
+  "aliases": {},
+  "metadata": {}
+}

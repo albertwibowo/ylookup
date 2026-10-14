@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-import re
+import sys
 from typing import Any, Callable
 
 from pydantic import ValidationError
 
 from ylookup.model.dto.workflow import WorkflowDTO, default_workflow
 
-DEFAULT_MODEL = "qwen/qwen2.5-32b-instruct"
+DEFAULT_MODEL = "qwen/qwen3-235b-a22b-thinking-2507"
+DEFAULT_REASONING_EFFORT = "medium"
 MAX_VALIDATION_ATTEMPTS = 3
 
 
@@ -24,6 +25,12 @@ def get_api_key() -> str | None:
     if key and key.strip():
         return key.strip()
     return None
+
+
+def get_reasoning_effort() -> str:
+    """OpenRouter reasoning.effort (max/xhigh/high/medium/low/minimal/none)."""
+    raw = os.environ.get("OPENROUTER_REASONING_EFFORT", DEFAULT_REASONING_EFFORT)
+    return (raw or DEFAULT_REASONING_EFFORT).strip().lower()
 
 
 def _workflow_response_format() -> dict[str, Any]:
@@ -41,48 +48,128 @@ def _workflow_response_format() -> dict[str, Any]:
     }
 
 
-def _extract_json(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r"\{[\s\S]*\}", text)
-        if not m:
-            raise
-        return json.loads(m.group(0))
+def _parse_structured_json(text: str) -> dict[str, Any]:
+    """Decode schema-constrained model content (already JSON text from the API)."""
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected JSON object, got {type(data).__name__}")
+    return data
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts: list[str] = []
+        for block in value:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text") or ""))
+            elif hasattr(block, "text"):
+                parts.append(str(getattr(block, "text") or ""))
+            else:
+                parts.append(str(block))
+        return "".join(parts)
+    return str(value)
+
+
+def _reasoning_from_details(details: Any) -> str:
+    if not details:
+        return ""
+    parts: list[str] = []
+    for item in details:
+        if isinstance(item, dict):
+            text = item.get("text") or item.get("summary")
+            if text:
+                parts.append(_as_text(text))
+            continue
+        text = getattr(item, "text", None)
+        if text:
+            parts.append(_as_text(text))
+            continue
+        summary = getattr(item, "summary", None)
+        if summary:
+            parts.append(_as_text(summary))
+    return "".join(parts)
+
+
+def _message_from_result(result: Any) -> Any | None:
+    choices = getattr(result, "choices", None)
+    if choices:
+        return choices[0].message
+    if hasattr(result, "model_dump"):
+        dumped = result.model_dump()
+        try:
+            return dumped["choices"][0]["message"]
+        except Exception:  # noqa: BLE001
+            return None
+    return None
 
 
 def _message_content(result: Any) -> str:
     """Pull text content from an OpenRouter ChatResult."""
+    message = _message_from_result(result)
     content = None
-    choices = getattr(result, "choices", None)
-    if choices:
-        message = choices[0].message
-        content = getattr(message, "content", None)
-    if content is None and hasattr(result, "model_dump"):
-        dumped = result.model_dump()
-        try:
-            content = dumped["choices"][0]["message"]["content"]
-        except Exception:  # noqa: BLE001
-            content = None
+    if message is not None:
+        if isinstance(message, dict):
+            content = message.get("content")
+        else:
+            content = getattr(message, "content", None)
     if not content:
         raise RuntimeError(f"Empty LLM response: {result!r}")
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-            else:
-                parts.append(str(block))
-        content = "".join(parts)
-    return str(content)
+    return _as_text(content)
 
 
-def chat_json(system: str, user: str, *, temperature: float = 0.1) -> dict[str, Any]:
-    """Call OpenRouter chat with WorkflowDTO JSON Schema and parse the reply."""
+def _message_reasoning(result: Any) -> str:
+    message = _message_from_result(result)
+    if message is None:
+        return ""
+    if isinstance(message, dict):
+        reasoning = _as_text(message.get("reasoning"))
+        if reasoning.strip():
+            return reasoning
+        return _reasoning_from_details(message.get("reasoning_details"))
+    reasoning = _as_text(getattr(message, "reasoning", None))
+    if reasoning.strip():
+        return reasoning
+    return _reasoning_from_details(getattr(message, "reasoning_details", None))
+
+
+def _emit_reasoning(phase: str, text: str, *, live: bool = False) -> None:
+    """Print reasoning tokens to stderr so they stay visible beside CLI reports."""
+    body = text.strip()
+    if not body:
+        model = get_model()
+        print(
+            f"[llm:{phase}] (no reasoning tokens from {model}; "
+            "use a thinking model e.g. qwen/qwen3-235b-a22b-thinking-2507)",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if not live:
+        print(f"\n── LLM reasoning ({phase}) ──", file=sys.stderr, flush=True)
+        print(body, file=sys.stderr, flush=True)
+        print("── end reasoning ──\n", file=sys.stderr, flush=True)
+
+
+def _delta_field(delta: Any, name: str) -> Any:
+    if delta is None:
+        return None
+    if isinstance(delta, dict):
+        return delta.get(name)
+    return getattr(delta, name, None)
+
+
+def chat_json(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.1,
+    phase: str = "llm",
+) -> dict[str, Any]:
+    """Call OpenRouter with WorkflowDTO JSON Schema; stream reasoning to the terminal."""
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY not set")
@@ -90,16 +177,72 @@ def chat_json(system: str, user: str, *, temperature: float = 0.1) -> dict[str, 
     from openrouter import OpenRouter
 
     client = OpenRouter(api_key=api_key)
-    result = client.chat.send(
-        model=get_model(),
-        messages=[
+    effort = get_reasoning_effort()
+    reasoning_cfg: dict[str, Any] | None = None
+    if effort and effort != "none":
+        reasoning_cfg = {"effort": effort}
+
+    common: dict[str, Any] = {
+        "model": get_model(),
+        "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=temperature,
-        response_format=_workflow_response_format(),
-    )
-    return result
+        "temperature": temperature,
+        "response_format": _workflow_response_format(),
+    }
+    if reasoning_cfg is not None:
+        common["reasoning"] = reasoning_cfg
+
+    # Prefer streaming so users see reasoning tokens as they arrive.
+    try:
+        stream = client.chat.send(**common, stream=True)
+    except Exception:  # noqa: BLE001
+        stream = None
+
+    if stream is not None:
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        reasoning_open = False
+        with stream:
+            for chunk in stream:
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                rpiece = _as_text(_delta_field(delta, "reasoning"))
+                if not rpiece:
+                    rpiece = _reasoning_from_details(
+                        _delta_field(delta, "reasoning_details")
+                    )
+                if rpiece:
+                    if not reasoning_open:
+                        print(
+                            f"\n── LLM reasoning ({phase}) ──",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        reasoning_open = True
+                    print(rpiece, end="", file=sys.stderr, flush=True)
+                    reasoning_parts.append(rpiece)
+                cpiece = _as_text(_delta_field(delta, "content"))
+                if cpiece:
+                    content_parts.append(cpiece)
+
+        if reasoning_open:
+            print("\n── end reasoning ──\n", file=sys.stderr, flush=True)
+
+        content = "".join(content_parts).strip()
+        if content:
+            if not reasoning_parts:
+                _emit_reasoning(phase, "")
+            return _parse_structured_json(content)
+        # Stream produced no content; fall through to a non-stream request.
+
+    result = client.chat.send(**common, stream=False)
+    reasoning = _message_reasoning(result)
+    _emit_reasoning(phase, reasoning)
+    return _parse_structured_json(_message_content(result))
 
 
 def _validate_with_retries(
@@ -148,7 +291,7 @@ def propose_workflow(profile_summary: dict[str, Any], context: str | None = None
             user["instruction"] = (
                 "Previous reply failed validation. Return a corrected full workflow JSON."
             )
-        data = chat_json(system, json.dumps(user))
+        data = chat_json(system, json.dumps(user), phase="propose")
         # Merge onto default so required steps always exist.
         merged = base.model_dump(mode="json")
         for key in ("intent", "bindings", "steps", "validators", "policies", "aliases"):
@@ -187,7 +330,7 @@ def patch_workflow(
             user["instruction"] = (
                 "Previous reply failed validation. Return a corrected full workflow JSON."
             )
-        data = chat_json(system, json.dumps(user))
+        data = chat_json(system, json.dumps(user), phase="patch")
         # Preserve clarifications from current workflow if model drops them
         clar = data.get("clarifications") or [
             c.model_dump(mode="json") for c in workflow.clarifications
@@ -231,7 +374,7 @@ def adapt_workflow(
             user["instruction"] = (
                 "Previous reply failed validation. Return a corrected full workflow JSON."
             )
-        data = chat_json(system, json.dumps(user))
+        data = chat_json(system, json.dumps(user), phase="adapt")
         # Freeze structural fields; only take bindings (+ optional policies/aliases).
         merged = workflow.model_dump(mode="json")
         if data.get("bindings"):

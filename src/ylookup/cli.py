@@ -37,7 +37,11 @@ def build_cmd(
     context_path: str | None,
     non_interactive: bool,
 ) -> None:
-    """Learn a workflow from input + target DIU (+ bank PDF)."""
+    """Learn a workflow from input + target DIU (+ bank PDF).
+
+    When OPENROUTER_API_KEY is set, LLM reasoning tokens (if the model returns
+    them) are streamed to stderr during propose/patch.
+    """
     from ylookup.builder import build_workflow
 
     report = build_workflow(
@@ -73,7 +77,11 @@ def update_cmd(
     context_path: str | None,
     non_interactive: bool,
 ) -> None:
-    """Adapt an existing workflow to a renamed/reordered workbook (+ target DIU)."""
+    """Adapt an existing workflow to a renamed/reordered workbook (+ target DIU).
+
+    When OPENROUTER_API_KEY is set, LLM reasoning tokens (if the model returns
+    them) are streamed to stderr during adapt/patch.
+    """
     from ylookup.updater import update_workflow
 
     report = update_workflow(

@@ -167,6 +167,7 @@ def update_workflow(
     workflow = _prepare_for_update(workflow, initial_profile.sheet_names)
 
     summary = _profile_summary(input_xlsx, workflow)
+    print("LLM: adapting workflow bindings…", flush=True)
     try:
         workflow = adapt_workflow(workflow, summary, context)
     except Exception:  # noqa: BLE001
@@ -377,6 +378,7 @@ def update_workflow(
                 "Prefer fixing bindings (sheet_hints, header_hints, column_aliases, "
                 "resolved_sheet); keep intent/steps/validators; preserve clarifications.",
             )
+            print(f"LLM: patching workflow (iter {iteration})…", flush=True)
             workflow = patch_workflow(
                 workflow,
                 compare.summary,
